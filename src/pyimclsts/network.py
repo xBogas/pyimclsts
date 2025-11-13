@@ -181,7 +181,7 @@ class message_bus(_message_bus):
         Starts another process that continuously reads/writes to the base_IO_interface.
     '''
 
-    __slots__ = ['_child_end', '_parent_end', '_child_process', '_keep_running', '_big_endian']
+    __slots__ = ['_child_end', '_parent_end', '_child_process', '_keep_running', '_big_endian', '_ready_event']
 
     def _external_listener_loop(self, child_end, timeout : int, keep_running : _multiprocessing.Value) -> None:
         '''All code bellow is executed in a separate process.'''
@@ -267,6 +267,12 @@ class message_bus(_message_bus):
             print("Reader stream has been closed.")
         async def main_loop():
             await self._io_interface.open()
+
+            try:
+                self._ready_event.set()
+            except Exception:
+                pass
+
             try:
                 await _asyncio.gather(consume_input(self._io_interface), consume_output(self._io_interface))
             finally:
@@ -290,16 +296,14 @@ class message_bus(_message_bus):
 
         self._keep_running = _multiprocessing.Value('i', True)
 
+        self._ready_event = _multiprocessing.Event()
+
         # Start process
         self._child_process = _multiprocessing.Process(target=self._external_listener_loop, 
                                                         args=(self._child_end, self._timeout, self._keep_running))
         self._child_process.start()
 
-        # It is very likely that the main process will run faster than the child process, which
-        # may cause some undesirable behaviour, such as, the main process' context manager closes 
-        # the connection before the child process' procedures can even start.
-        # The naive solution: block the main thread for 0.5 second
-        _time.sleep(0.5)
+        self._ready_event.wait()
     
     def close(self, max_wait : float = 1) -> None:        
         with self._keep_running.get_lock():
@@ -436,13 +440,13 @@ class message_bus_st(_message_bus):
                 await _asyncio.sleep(0)
             print("Reader stream has been closed.")
         async def main_loop():
-            await self._io_interface.open()
             try:
                 await _asyncio.gather(consume_input(self._io_interface), consume_output(self._io_interface))
             finally:
                 print('IO interface has been closed.')
                 await self._io_interface.close()
 
+        await self._io_interface.open()
         self._task = _asyncio.create_task(main_loop())
     
     def close(self, max_wait : float = 1) -> None:

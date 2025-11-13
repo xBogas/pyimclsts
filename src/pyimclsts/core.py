@@ -252,3 +252,114 @@ class tcp_interface(base_IO_interface):
     async def close(self) -> None:
         self._writer.close()
         await self._writer.wait_closed()
+
+
+class tcp_server_interface(base_IO_interface):
+    """
+    A minimal implementation of a TCP server interface. It wraps a
+    server established with the asyncio module.
+    """
+
+    __slots__ = [
+        "_ip",
+        "_port",
+        "_server",
+        "_client_reader",
+        "_client_writer",
+        "_client_con_fut",
+        "_client_con_evt",
+    ]
+
+    def __init__(self, ip: str, port: int) -> None:
+        self._ip = ip
+        self._port = port
+
+    async def open(self) -> None:
+        """
+        Start listening and block until the first client connects.
+        After the first client connects the listening socket is closed to enforce
+        single-client behaviour while keeping the connected client active.
+        """
+        # TODO: multi-client implementation
+        # require managing multiple reader/writer pairs and a way to select which one to use for read/write.
+
+        loop = _asyncio.get_running_loop()
+        self._client_con_fut = loop.create_future()
+        self._client_con_evt = _asyncio.Event()
+        self._server = await _asyncio.start_server(
+            self._handle_client, self._ip, self._port
+        )
+        await self._server.start_serving()
+
+        # wait until the first client connects
+        reader, writer = await self._client_con_fut
+        self._client_reader = reader
+        self._client_writer = writer
+        self._client_con_evt.set()
+
+        # stop accepting new connections while keeping the accepted client active
+        self._server.close()
+        _asyncio.create_task(self._server.wait_closed())
+
+    async def _handle_client(
+        self, reader: _asyncio.StreamReader, writer: _asyncio.StreamWriter
+    ):
+
+        # deliver the first connection to open(); reject any further connections
+        if self._client_con_fut is not None and not self._client_con_fut.done():
+            self._client_con_fut.set_result((reader, writer))
+            return
+
+        try:
+            # immediately close any further connections
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+    async def read(self, n_bytes: int) -> bytes:
+
+        if self._client_reader is None:
+            if self._client_con_fut is None:
+                raise RuntimeError("TCP server interface not opened yet")
+
+            if self._client_con_evt is None:
+                raise RuntimeError("TCP server interface not opened yet")
+
+            await self._client_con_evt.wait()
+
+        r = await self._client_reader.read(n_bytes)
+        if r == b"":
+            raise EOFError("Connection returned empty byte string")
+
+        return r
+
+    async def write(self, byte_string: bytes) -> None:
+
+        if self._client_writer is None:
+            if self._client_con_fut is None:
+                raise RuntimeError("TCP server interface not opened yet")
+
+            if self._client_con_evt is None:
+                raise RuntimeError("TCP server interface not opened yet")
+
+            await self._client_con_evt.wait()
+
+        self._client_writer.write(byte_string)
+        await self._client_writer.drain()
+
+    async def close(self) -> None:
+
+        try:
+            if self._client_writer is not None:
+                self._client_writer.close()
+                await self._client_writer.wait_closed()
+        except Exception:
+            pass
+
+        try:
+            if self._server is not None:
+                self._server.close()
+                await self._server.wait_closed()
+        except Exception:
+            pass

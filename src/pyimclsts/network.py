@@ -135,6 +135,7 @@ def _get_id_src_src_ent(message : bytes) -> Tuple[int, int, int]:
 # Re-export some classes:
 
 tcp_interface = _core.tcp_interface
+tcp_server_interface = _core.tcp_server_interface
 file_interface = _core.file_interface
 
 class _message_bus():

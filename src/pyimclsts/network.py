@@ -338,7 +338,7 @@ class message_bus(_message_bus):
     
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.close()
-        if exc_type == EOFError:
+        if isinstance(exc_type, EOFError):
             print('Child process has been closed due to end of file.')
             return True
         print('Child process has been closed.')
@@ -476,7 +476,7 @@ class message_bus_st(_message_bus):
     
     def __exit__(self, exc_type, exc_value, exc_tb):
         self.close()
-        if exc_type == EOFError:
+        if isinstance(exc_type, EOFError):
             print('Message bus event loop has been closed due to end of file.')
             return True
         print('Message bus event loop has been closed.')

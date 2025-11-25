@@ -152,9 +152,9 @@ class _message_bus():
         self._block_outgoing = False
     
     def __enter__(self):
-        raise NotImplemented
+        raise NotImplementedError
     def __exit__(self, exc_type, exc_value, exc_tb):
-        raise NotImplemented
+        raise NotImplementedError
     
     def block_outgoing(self) -> None:
         '''Blocks (and discards) outgoing messages'''
@@ -171,7 +171,7 @@ class _message_bus():
             
     def _send(self, message : _pg._base.base_message, *, src : Optional[int] = None, src_ent : Optional[int] = None, 
                         dst : Optional[int] = None, dst_ent : Optional[int] = None) -> None:
-        raise NotImplemented
+        raise NotImplementedError
 
 class message_bus(_message_bus):
     '''
@@ -731,7 +731,7 @@ class subscriber:
         Runs the given callback in a different process and should be used only with heavy load
         functions.
         '''
-        raise NotImplemented
+        raise NotImplementedError
 
     def call_once(self, callback : Callable[[Callable[[T], None]], None], delay : Optional[float] = None) -> None:
         '''Calls the given callbacks as soon as the main loop starts or according to their delay in seconds.

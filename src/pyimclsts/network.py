@@ -2,7 +2,7 @@
     Contains classes that allows the user to connect to the network, 
     send and receive messages.
 '''
-from typing import Callable, Union, Optional, Tuple, Any
+from typing import Callable, TypeVar, Union, Optional, Tuple, Any
 import functools as _functools
 import inspect as _inspect
 import types as _types
@@ -25,6 +25,8 @@ _spec = _import.spec_from_file_location(_module_name, _location)
 _pg = _import.module_from_spec(_spec)
 _sys.modules[_module_name] = _pg
 _spec.loader.exec_module(_pg)
+
+T = TypeVar("T", bound=_core.IMC_message)
 
 def unpack(message : bytes, *, is_big_endian : Optional[bool] = None, is_field_message : bool = False, fast_mode : bool = False) -> Any:
     '''Expects a serializable (= exactly long (header + fields + CRC)) string of bits whose CRC has already been checked
@@ -515,7 +517,7 @@ class subscriber:
         self.subscribe_async(self._update_peers, _pg.messages.EntityList)
         self.subscribe_async(self._update_peers, _pg.messages.Announce)
 
-    async def _periodic_wrapper_coro(self, _period : float, f : Callable, send_callback : Callable[[_core.IMC_message], None]):
+    async def _periodic_wrapper_coro(self, _period : float, f : Callable, send_callback : Callable[[T], None]):
         loop = _asyncio.get_running_loop()
         while True:
             last_exec = loop.time()
@@ -523,7 +525,7 @@ class subscriber:
             now = loop.time()
             await _asyncio.sleep(max(last_exec - now + _period, 0))
                 
-    async def _periodic_wrapper(self, _period : float, f : Callable, send_callback : Callable[[_core.IMC_message], None]):
+    async def _periodic_wrapper(self, _period : float, f : Callable, send_callback : Callable[[T], None]):
         loop = _asyncio.get_running_loop()
         f(send_callback)
         while True:
@@ -662,7 +664,7 @@ class subscriber:
             
         return False
     
-    def subscribe_async(self, callback : Callable[[_core.IMC_message, Callable[[_core.IMC_message], None]], None], msg_id : Optional[Union[int, _core.IMC_message, str, _types.ModuleType]] = None, *, src : Optional[str] = None, src_ent : Optional[str] = None):
+    def subscribe_async(self, callback : Callable[[T, Callable[[T], None]], None], msg_id : Optional[Union[int, T, str, _types.ModuleType]] = None, *, src : Optional[str] = None, src_ent : Optional[str] = None):
         '''Appends the callback to the list of subscriptions to a message.
         msg_id can be provided as an int, the class of the message, its instance or a category (string (camel case) or module).
         src and src_ent should be provided as strings.
@@ -724,19 +726,19 @@ class subscriber:
                     else:
                         self._subscriptions[key] = [(c, src, src_ent)]
 
-    def periodic_async(self, callback : Callable[[_core.IMC_message], None], period : float):
+    def periodic_async(self, callback : Callable[[T], None], period : float):
         '''Add callback to a list to be called every period seconds. Function must take
         a send callback as parameter. This callback can be used to send messages.'''
         self._periodic.append((callback, period))
 
-    def subscribe_mp(self, callback : Callable[[_core.IMC_message, Callable[[_core.IMC_message], None]], None], msg_id : Optional[Union[int, _core.IMC_message, str, _types.ModuleType]] = None, *, src : Optional[str] = None, src_ent : Optional[str] = None):
+    def subscribe_mp(self, callback : Callable[[T, Callable[[T], None]], None], msg_id : Optional[Union[int, T, str, _types.ModuleType]] = None, *, src : Optional[str] = None, src_ent : Optional[str] = None):
         '''Calls a function and pass the message and a callback to send messages to it.
         Runs the given callback in a different process and should be used only with heavy load
         functions.
         '''
         raise NotImplemented
 
-    def call_once(self, callback : Callable[[Callable[[_core.IMC_message], None]], None], delay : Optional[float] = None) -> None:
+    def call_once(self, callback : Callable[[Callable[[T], None]], None], delay : Optional[float] = None) -> None:
         '''Calls the given callbacks as soon as the main loop starts or according to their delay in seconds.
         Callback parameters must be exactly one callback (that can be used to send messages).'''
         self._call_once.append((callback, delay))

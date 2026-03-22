@@ -574,61 +574,81 @@ class subscriber:
                 loop = _asyncio.get_running_loop()
                 loop.close()
 
-    def _update_peers(self, msg : Union[_pg.messages.EntityList, _pg.messages.Announce, _pg.messages.EntityInfo], send_callback):
-        if msg._header is not None:
-            src = msg._header.src
-            
-            if isinstance(msg, _pg.messages.EntityList):
-                if msg.op == msg.OP.REPORT:
-                    entList =  [i.split(sep='=') for i in msg.list.split(sep=';')]
-                    entList = {k : int(v) for [k, v] in entList}
+    def _handle_entity_list(self, src: int, msg: _pg.messages.EntityList):
+        if msg.op != msg.OP.REPORT:
+            return
 
-                    name = self._src2name.get(src, None)
-                    if name is not None:
-                        # if it exists, update; else, create entry
-                        if self._peers.get(name, None) is not None:
-                            self._peers[name]['EntityList'] = entList
-                        else:
-                            self._peers[name] = {'EntityList' : entList}
-                    else:
-                        if self._peers.get(src, None) is not None:
-                            self._peers[src]['EntityList'] = entList
-                        else:
-                            self._peers[src] = {'EntityList' : entList}
-            
-            elif isinstance(msg, _pg.messages.EntityInfo):
-                name = self._src2name.get(src, None)
-                
-                if name is not None:
-                    # if it exists, update; else, create entry
-                    if self._peers.get(name, None) is not None:
-                        self._peers[name]['EntityList'][msg.label] = msg.id
-                    else:
-                        self._peers[name] = {'EntityList' : {msg.label : msg.id}}
-                else:
-                    if self._peers.get(src, None) is not None:
-                        self._peers[src]['EntityList'][msg.label] = msg.id
-                    else:
-                        self._peers[src] = {'EntityList' : {msg.label : msg.id}}
+        entList = [i.split(sep="=") for i in msg.list.split(sep=";")]
+        entList = {k: int(v) for [k, v] in entList}
 
-            elif isinstance(msg, _pg.messages.Announce):
-                name = msg.sys_name
+        name = self._src2name.get(src, None)
+        if name is not None:
+            # if it exists, update; else, create entry
+            if self._peers.get(name, None) is not None:
+                self._peers[name]["EntityList"] = entList
+            else:
+                self._peers[name] = {"EntityList": entList}
+            return
 
-                self._src2name[src] = name
-                
-                temp_value = self._peers.pop(src, None)
-                # check if an int key exists. If it does upgrade it to a normal entry
-                if temp_value is not None:
-                    self._peers[name] = temp_value
-                    self._peers[name]['src'] = src
-                else:
-                    # if it exists, update; else, create entry
-                    if self._peers.get(name, None) is not None:
-                        self._peers[name]['src'] = src
-                    else:
-                        self._peers[name] = {'src' : src}
+        # Temporary entry with src as key
+        # to be upgraded to a normal entry when the corresponding Announce message is received
+        if self._peers.get(src, None) is not None:
+            self._peers[src]["EntityList"] = entList
         else:
-            pass
+            self._peers[src] = {"EntityList": entList}
+
+    def _handle_entity_info(self, src: int, msg: _pg.messages.EntityInfo):
+
+        name = self._src2name.get(src, None)
+
+        if name is not None:
+            # if it exists, update; else, create entry
+            if self._peers.get(name, None) is not None:
+                self._peers[name]["EntityList"][msg.label] = msg.id
+            else:
+                self._peers[name] = {"EntityList": {msg.label: msg.id}}
+        else:
+            if self._peers.get(src, None) is not None:
+                self._peers[src]["EntityList"][msg.label] = msg.id
+            else:
+                self._peers[src] = {"EntityList": {msg.label: msg.id}}
+
+    def _handle_announce(self, src: int, msg: _pg.messages.Announce):
+
+        name = msg.sys_name
+        self._src2name[src] = name
+
+        temp_value = self._peers.pop(src, None)
+        # check if an int key exists. If it does upgrade it to a normal entry
+        if temp_value is not None:
+            self._peers[name] = temp_value
+            self._peers[name]["src"] = src
+            return
+
+        # if it exists, update; else, create entry
+        if self._peers.get(name, None) is not None:
+            self._peers[name]["src"] = src
+        else:
+            self._peers[name] = {"src": src}
+
+    def _update_peers(
+        self,
+        msg: Union[
+            _pg.messages.EntityList, _pg.messages.Announce, _pg.messages.EntityInfo
+        ],
+        _,
+    ):
+
+        if msg._header is None:
+            return
+
+        src = msg._header.src
+        if isinstance(msg, _pg.messages.EntityList):
+            self._handle_entity_list(src, msg)
+        elif isinstance(msg, _pg.messages.EntityInfo):
+            self._handle_entity_info(src, msg)
+        elif isinstance(msg, _pg.messages.Announce):
+            self._handle_announce(src, msg)
     
     def _get_src(self, vehicle_name : str):
         return self._peers[vehicle_name].get('src', None) if self._peers.get(vehicle_name, None) is not None else None

@@ -600,18 +600,14 @@ class subscriber:
     def _handle_entity_info(self, src: int, msg: _pg.messages.EntityInfo):
 
         name = self._src2name.get(src, None)
+        key = name if name is not None else src
 
-        if name is not None:
-            # if it exists, update; else, create entry
-            if self._peers.get(name, None) is not None:
-                self._peers[name]["EntityList"][msg.label] = msg.id
-            else:
-                self._peers[name] = {"EntityList": {msg.label: msg.id}}
-        else:
-            if self._peers.get(src, None) is not None:
-                self._peers[src]["EntityList"][msg.label] = msg.id
-            else:
-                self._peers[src] = {"EntityList": {msg.label: msg.id}}
+        if key not in self._peers:
+            self._peers[key] = {}
+        if "EntityList" not in self._peers[key]:
+            self._peers[key]["EntityList"] = {}
+
+        self._peers[key]["EntityList"][msg.label] = msg.id
 
     def _handle_announce(self, src: int, msg: _pg.messages.Announce):
 
